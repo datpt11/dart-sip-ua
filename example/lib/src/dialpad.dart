@@ -35,7 +35,7 @@ class _MyDialPadWidget extends State<DialPadWidget>
 
   void _loadSettings() async {
     _preferences = await SharedPreferences.getInstance();
-    _dest = _preferences.getString('dest') ?? 'sip:hello_jssip@tryit.jssip.net';
+    _dest = "0966882669";
     _textController = TextEditingController(text: _dest);
     _textController!.text = _dest!;
 
@@ -101,6 +101,7 @@ class _MyDialPadWidget extends State<DialPadWidget>
       if (voiceOnly) {
         mediaConstraints['video'] = !voiceOnly;
       }
+      print(mediaConstraints);
       mediaStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     }
 
