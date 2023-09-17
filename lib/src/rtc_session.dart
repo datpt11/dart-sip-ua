@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
@@ -348,7 +349,8 @@ class RTCSession extends EventManager implements Owner {
     String? contentType = request.getHeader('Content-Type');
 
     // Check body and content type.
-    if (request.body != null && (contentType != 'application/sdp')) {
+    // ignore: always_specify_types
+    if (request.body != null && (!['application/sdp', 'application/simple-message-summary'].contains(contentType))) {
       request.reply(415);
       return;
     }
@@ -411,11 +413,11 @@ class RTCSession extends EventManager implements Owner {
         }
       }, expires);
     }
-
+    bool isMap = request.body != null && RegExp(r'\{(.*)\}').hasMatch(request.body.toString());
     // Set internal properties.
     _direction = 'incoming';
     _local_identity = request.to;
-    _remote_identity = request.from;
+    _remote_identity = isMap ? NameAddrHeader(URI(request.from?.uri?.scheme, json.decode(request.body.toString())['phone_number'], request.from?.uri?.host, request.from?.uri?.port), request.from?.display_name, {}) : request.from;
 
     // A init callback was specifically defined.
     if (initCallback != null) {
@@ -1229,7 +1231,7 @@ class RTCSession extends EventManager implements Owner {
   void _receiveRequest(IncomingRequest request) async {
     logger.d('receiveRequest()');
 
-    if (request.method == SipMethod.CANCEL) {
+    if (request.method == SipMethod.CANCEL || (request.method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
       /* RFC3261 15 States that a UAS may have accepted an invitation while a CANCEL
       * was in progress and that the UAC MAY continue with the session established by
       * any 2xx response, or MAY terminate with BYE. DartSIP does continue with the

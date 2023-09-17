@@ -592,7 +592,10 @@ class UA extends EventManager {
    */
   void receiveRequest(IncomingRequest request) {
     DartSIP_C.SipMethod? method = request.method;
-
+    print('request_method $method');
+    print('request event ${request.event?.event}');
+    print('request to_tag ${request.to_tag == null}');
+    print('request replaces ${request.hasHeader('replaces')}');
     // Check that request URI points to us.
     if (request.ruri!.user != _configuration.uri.user &&
         request.ruri!.user != _contact!.uri!.user) {
@@ -617,7 +620,7 @@ class UA extends EventManager {
     }
 
     // Create the server transaction.
-    if (method == SipMethod.INVITE) {
+    if (method == SipMethod.INVITE || (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
       /* eslint-disable no-*/
       InviteServerTransaction(this, _transport, request);
       /* eslint-enable no-*/
@@ -645,10 +648,10 @@ class UA extends EventManager {
         request.reply(405);
         return;
       }
-      Message message = Message(this);
-      message.init_incoming(request);
+      // Message message = Message(this);
+      // message.init_incoming(request);
       return;
-    } else if (method == SipMethod.INVITE) {
+    } else if (method == SipMethod.INVITE || (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
       // Initial INVITE.
       if (request.to_tag != null && !hasListeners(EventNewRTCSession())) {
         request.reply(405);
@@ -700,13 +703,13 @@ class UA extends EventManager {
           request.reply(481);
           break;
         case SipMethod.CANCEL:
-          session =
-              _findSession(request.call_id!, request.from_tag, request.to_tag);
-          if (session != null) {
-            session.receiveRequest(request);
-          } else {
-            logger.d('received CANCEL request for a non existent session');
-          }
+          // session =
+          //     _findSession(request.call_id!, request.from_tag, request.to_tag);
+          // if (session != null) {
+          //   session.receiveRequest(request);
+          // } else {
+          //   logger.d('received CANCEL request for a non existent session');
+          // }
           break;
         case SipMethod.ACK:
           /* Absorb it.
@@ -715,9 +718,47 @@ class UA extends EventManager {
            */
           break;
         case SipMethod.NOTIFY:
-          // Receive sip event.
-          emit(EventSipEvent(request: request));
-          request.reply(200);
+          switch(request.event?.event){
+            case 'incoming':
+              if (hasRTCPeerConnection) {
+                if (request.hasHeader('replaces')) {
+                  ParsedData replaces = request.replaces;
+
+                  dialog = _findDialog(
+                      replaces.call_id, replaces.from_tag!, replaces.to_tag!);
+                  if (dialog != null) {
+                    session = dialog.owner as RTCSession?;
+                    if (!session!.isEnded()) {
+                      session.receiveRequest(request);
+                    } else {
+                      request.reply(603);
+                    }
+                  } else {
+                    request.reply(481);
+                  }
+                } else {
+                  session = RTCSession(this);
+                  session.init_incoming(request);
+                }
+              } else {
+                logger.e('INVITE received but WebRTC is not supported');
+                request.reply(488);
+              }
+              break;
+            case 'incoming-hangup':
+              // session =
+              _findSession(request.call_id!, request.from_tag, request.to_tag);
+              if (session != null) {
+                session.receiveRequest(request);
+              } else {
+                logger.d('received CANCEL request for a non existent session');
+              }
+              break;
+            default:
+              // Receive sip event.
+              emit(EventSipEvent(request: request));
+              request.reply(200);
+          }
           break;
         case SipMethod.SUBSCRIBE:
           emit(EventOnNewSubscribe(request: request));
@@ -944,7 +985,7 @@ class UA extends EventManager {
 // Transport data event.
   void onTransportData(Transport transport, String messageData) {
     IncomingMessage? message = Parser.parseMessage(messageData, this);
-
+    print('incoming message ${message?.call_id}');
     if (message == null) {
       return;
     }
