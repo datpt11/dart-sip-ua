@@ -138,7 +138,9 @@ class UA extends EventManager {
 
   // Flag that indicates whether UA is currently stopping
   bool _stopping = false;
-
+  String? callId;
+  String? fromTag;
+  String? toTag;
   // ============
   //  High Level API
   // ============
@@ -737,6 +739,9 @@ class UA extends EventManager {
                     request.reply(481);
                   }
                 } else {
+                  callId = request.call_id;
+                  fromTag = request.from_tag;
+                  toTag = request.to_tag;
                   session = RTCSession(this);
                   session.init_incoming(request);
                 }
@@ -746,8 +751,8 @@ class UA extends EventManager {
               }
               break;
             case 'incoming-hangup':
-              // session =
-              _findSession(request.call_id!, request.from_tag, request.to_tag);
+              session = _findSession(callId ?? '', fromTag, toTag);
+              print('incoming-hangup $session');
               if (session != null) {
                 session.receiveRequest(request);
               } else {
@@ -816,7 +821,9 @@ class UA extends EventManager {
     RTCSession? sessionA = _sessions[sessionIDa];
     String sessionIDb = call_id + (to_tag ?? '');
     RTCSession? sessionB = _sessions[sessionIDb];
-
+print(sessionIDb);
+print(sessionIDa);
+print(_sessions);
     if (sessionA != null) {
       return sessionA;
     } else if (sessionB != null) {

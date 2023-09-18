@@ -1231,7 +1231,7 @@ class RTCSession extends EventManager implements Owner {
   void _receiveRequest(IncomingRequest request) async {
     logger.d('receiveRequest()');
 
-    if (request.method == SipMethod.CANCEL || (request.method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
+    if (request.method == SipMethod.CANCEL || (request.method == SipMethod.NOTIFY && request.event?.event == 'incoming-hangup')) {
       /* RFC3261 15 States that a UAS may have accepted an invitation while a CANCEL
       * was in progress and that the UAC MAY continue with the session established by
       * any 2xx response, or MAY terminate with BYE. DartSIP does continue with the
@@ -1363,10 +1363,26 @@ class RTCSession extends EventManager implements Owner {
           }
           break;
         case SipMethod.NOTIFY:
-          if (_status == C.STATUS_CONFIRMED) {
-            _receiveNotify(request);
-          } else {
-            request.reply(403, 'Wrong Status');
+          switch(request.event?.event) {
+            case 'incoming':
+               if (_status == C.STATUS_CONFIRMED) {
+                if (request.hasHeader('replaces')) {
+                  _receiveReplaces(request);
+                } else {
+                  _receiveReinvite(request);
+                }
+              } else {
+                request.reply(403, 'Wrong Status');
+              }
+              break;
+            case 'incoming-hangup':
+              break;
+            default:
+              if (_status == C.STATUS_CONFIRMED) {
+                _receiveNotify(request);
+              } else {
+                request.reply(403, 'Wrong Status');
+              }
           }
           break;
         default:
@@ -1868,7 +1884,7 @@ class RTCSession extends EventManager implements Owner {
     }
 
     // Request with SDP.
-    if (contentType != 'application/sdp') {
+    if (!['application/simple-message-summary', 'application/sdp'].contains(contentType)) {
       logger.d('invalid Content-Type');
       request.reply(415);
       return;
