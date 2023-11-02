@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'config.dart' as config;
 import 'config.dart';
@@ -101,9 +102,7 @@ class UA extends EventManager {
   }
 
   final Map<String?, Subscriber> _subscribers = <String?, Subscriber>{};
-  final Map<String, dynamic> _cache = <String, dynamic>{
-    'credentials': <dynamic>{}
-  };
+  final Map<String, dynamic> _cache = <String, dynamic>{'credentials': <dynamic>{}};
 
   final Settings _configuration = Settings();
   DynamicSettings? _dynConfiguration = DynamicSettings();
@@ -141,6 +140,8 @@ class UA extends EventManager {
   String? callId;
   String? fromTag;
   String? toTag;
+  String? calledPhoneNumber;
+  String? answeredPhoneNumber;
   // ============
   //  High Level API
   // ============
@@ -263,10 +264,11 @@ class UA extends EventManager {
    * -throws {TypeError}
    *
    */
-  Message sendMessage(String target, String body, Map<String, dynamic>? options,
-      Map<String, dynamic>? params) {
+  Message sendMessage(
+      String target, String body, Map<String, dynamic>? options, Map<String, dynamic>? params) {
     logger.d('sendMessage()');
     Message message = Message(this);
+    answeredPhoneNumber = calledPhoneNumber;
     message.send(target, body, options, params);
     return message;
   }
@@ -622,7 +624,8 @@ class UA extends EventManager {
     }
 
     // Create the server transaction.
-    if (method == SipMethod.INVITE || (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
+    if (method == SipMethod.INVITE ||
+        (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
       /* eslint-disable no-*/
       InviteServerTransaction(this, _transport, request);
       /* eslint-enable no-*/
@@ -653,7 +656,8 @@ class UA extends EventManager {
       // Message message = Message(this);
       // message.init_incoming(request);
       return;
-    } else if (method == SipMethod.INVITE || (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
+    } else if (method == SipMethod.INVITE ||
+        (method == SipMethod.NOTIFY && request.event?.event == 'incoming')) {
       // Initial INVITE.
       if (request.to_tag != null && !hasListeners(EventNewRTCSession())) {
         request.reply(405);
@@ -693,7 +697,14 @@ class UA extends EventManager {
               }
             } else {
               session = RTCSession(this);
-              session.init_incoming(request);
+              session.init_incoming(request, null, (RTCSession session) {
+                answeredPhoneNumber = null;
+                session.receiveRequest(request, true);
+                RTCSession? fakeIncommingSession = _findSession(callId ?? '', fromTag, toTag);
+                if (fakeIncommingSession != null) {
+                  fakeIncommingSession.receiveRequest(request, true);
+                }
+              }, calledPhoneNumber, answeredPhoneNumber);
             }
           } else {
             logger.e('INVITE received but WebRTC is not supported');
@@ -722,6 +733,10 @@ class UA extends EventManager {
         case SipMethod.NOTIFY:
           switch(request.event?.event){
             case 'incoming':
+              bool isMap =
+                  request.body != null && RegExp(r'\{(.*)\}').hasMatch(request.body.toString());
+              calledPhoneNumber =
+                  isMap ? json.decode(request.body.toString())['phone_number'] : null;
               if (hasRTCPeerConnection) {
                 if (request.hasHeader('replaces')) {
                   ParsedData replaces = request.replaces;
@@ -821,9 +836,9 @@ class UA extends EventManager {
     RTCSession? sessionA = _sessions[sessionIDa];
     String sessionIDb = call_id + (to_tag ?? '');
     RTCSession? sessionB = _sessions[sessionIDb];
-print(sessionIDb);
-print(sessionIDa);
-print(_sessions);
+    print(sessionIDb);
+    print(sessionIDa);
+    print(_sessions);
     if (sessionA != null) {
       return sessionA;
     } else if (sessionB != null) {

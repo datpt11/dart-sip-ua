@@ -54,8 +54,8 @@ class SIPTimers {
 }
 
 class RFC4028Timers {
-  RFC4028Timers(this.enabled, this.refreshMethod, this.defaultExpires,
-      this.currentExpires, this.running, this.refresher, this.timer);
+  RFC4028Timers(this.enabled, this.refreshMethod, this.defaultExpires, this.currentExpires,
+      this.running, this.refresher, this.timer);
   bool enabled;
   SipMethod refreshMethod;
   int? defaultExpires;
@@ -151,7 +151,7 @@ class RTCSession extends EventManager implements Owner {
   Future<void> dtmfFuture = (Completer<void>()..complete()).future;
 
   @override
-  late Function(IncomingRequest) receiveRequest;
+  late Function(IncomingRequest, [bool autoCancel]) receiveRequest;
 
   /**
    * User API
@@ -342,7 +342,10 @@ class RTCSession extends EventManager implements Owner {
   }
 
   void init_incoming(IncomingRequest request,
-      [Function(RTCSession)? initCallback]) {
+      [Function(RTCSession)? initCallback,
+      Function(RTCSession)? hangupCallback,
+      String? calledPhoneNumber,
+      String? answeredPhoneNumber]) {
     logger.d('init_incoming()');
 
     int? expires;
@@ -350,7 +353,9 @@ class RTCSession extends EventManager implements Owner {
 
     // Check body and content type.
     // ignore: always_specify_types
-    if (request.body != null && (!['application/sdp', 'application/simple-message-summary'].contains(contentType))) {
+    if (request.body != null &&
+        (!<String>['application/sdp', 'application/simple-message-summary']
+            .contains(contentType))) {
       request.reply(415);
       return;
     }
@@ -417,8 +422,18 @@ class RTCSession extends EventManager implements Owner {
     // Set internal properties.
     _direction = 'incoming';
     _local_identity = request.to;
-    _remote_identity = isMap ? NameAddrHeader(URI(request.from?.uri?.scheme, json.decode(request.body.toString())['phone_number'], request.from?.uri?.host, request.from?.uri?.port), request.from?.display_name, {}) : request.from;
-
+    _remote_identity = isMap
+        ? NameAddrHeader(
+            URI(request.from?.uri?.scheme, json.decode(request.body.toString())['phone_number'],
+                request.from?.uri?.host, request.from?.uri?.port),
+            request.from?.display_name,
+            <dynamic, dynamic>{})
+        : request.from;
+    String? remotePhone = remote_identity?.display_name ?? remote_identity?.uri?.user;
+    if (calledPhoneNumber == remotePhone && answeredPhoneNumber != remotePhone) {
+      hangupCallback?.call(this);
+      return;
+    }
     // A init callback was specifically defined.
     if (initCallback != null) {
       initCallback(this);
@@ -796,12 +811,10 @@ class RTCSession extends EventManager implements Owner {
           Dialog dialog = _dialog!;
 
           // Send the BYE as soon as the ACK is received...
-          receiveRequest = (IncomingMessage request) {
+          receiveRequest = (IncomingMessage request, [bool autoCancel = false]) {
             if (request.method == SipMethod.ACK) {
-              sendRequest(SipMethod.BYE, <String, dynamic>{
-                'extraHeaders': extraHeaders,
-                'body': body
-              });
+              sendRequest(
+                  SipMethod.BYE, <String, dynamic>{'extraHeaders': extraHeaders, 'body': body});
               dialog.terminate();
             }
           };
@@ -1228,10 +1241,12 @@ class RTCSession extends EventManager implements Owner {
   /**
    * In dialog Request Reception
    */
-  void _receiveRequest(IncomingRequest request) async {
+  void _receiveRequest(IncomingRequest request, [bool autoCancel = false]) async {
     logger.d('receiveRequest()');
 
-    if (request.method == SipMethod.CANCEL || (request.method == SipMethod.NOTIFY && request.event?.event == 'incoming-hangup')) {
+    if (request.method == SipMethod.CANCEL ||
+        (request.method == SipMethod.NOTIFY && request.event?.event == 'incoming-hangup') ||
+        autoCancel) {
       /* RFC3261 15 States that a UAS may have accepted an invitation while a CANCEL
       * was in progress and that the UAC MAY continue with the session established by
       * any 2xx response, or MAY terminate with BYE. DartSIP does continue with the
@@ -1884,7 +1899,7 @@ class RTCSession extends EventManager implements Owner {
     }
 
     // Request with SDP.
-    if (!['application/simple-message-summary', 'application/sdp'].contains(contentType)) {
+    if (!<String>['application/simple-message-summary', 'application/sdp'].contains(contentType)) {
       logger.d('invalid Content-Type');
       request.reply(415);
       return;
@@ -2004,13 +2019,11 @@ class RTCSession extends EventManager implements Owner {
       await _connection!.setRemoteDescription(offer);
     } catch (error) {
       request.reply(488);
-      logger.e(
-          'emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
+      logger.e('emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
 
       emit(EventSetRemoteDescriptionFailed(exception: error));
 
-      throw Exceptions.TypeError(
-          'peerconnection.setRemoteDescription() failed');
+      throw Exceptions.TypeError('peerconnection.setRemoteDescription() failed');
     }
 
     if (_status == C.STATUS_TERMINATED) {
