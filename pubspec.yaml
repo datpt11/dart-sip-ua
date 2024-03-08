@@ -9,7 +9,9 @@ environment:
 dependencies:
   collection: ^1.15.0
   crypto: ^3.0.0
-  flutter_webrtc: ^0.9.25
+  flutter_webrtc:
+    git:
+      url: git@github.com:datpt11/flutter-webrtc.git
   intl: ^0.18.0
   logger: ^1.0.0
   parser_error: ^0.2.0
@@ -19,6 +21,7 @@ dependencies:
   sdp_transform: ^0.3.2
   uuid: ^3.0.2
 
+publish_to: none
 
 dev_dependencies:
   lints: ^2.0.1
