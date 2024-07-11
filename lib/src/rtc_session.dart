@@ -3,8 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
-
 import 'package:sip_ua/sip_ua.dart';
+
 import 'constants.dart' as DartSIP_C;
 import 'constants.dart';
 import 'dialog.dart';
@@ -2196,10 +2196,14 @@ class RTCSession extends EventManager implements Owner {
 
       RTCSession session = RTCSession(_ua);
 
-      // Terminate the current session when the one is confirmed.
-      session.on(EventCallConfirmed(), (EventCallConfirmed data) {
-        terminate();
-      });
+      bool isMap = request.body != null && RegExp(r'\{(.*)\}').hasMatch(request.body.toString());
+        if (!isMap) {
+          // Terminate the current session when the one is confirmed.
+        session.on(EventCallConfirmed(), (EventCallConfirmed data) {
+          terminate();
+        });
+      }
+
 
       session.init_incoming(request, initCallback);
       return true;
