@@ -2196,13 +2196,10 @@ class RTCSession extends EventManager implements Owner {
 
       RTCSession session = RTCSession(_ua);
 
-      bool isMap = request.body != null && RegExp(r'\{(.*)\}').hasMatch(request.body.toString());
-        if (!isMap) {
-          // Terminate the current session when the one is confirmed.
-        session.on(EventCallConfirmed(), (EventCallConfirmed data) {
-          terminate();
-        });
-      }
+      // Terminate the current session when the one is confirmed.
+      session.on(EventCallConfirmed(), (EventCallConfirmed data) {
+        terminate();
+      });
 
 
       session.init_incoming(request, initCallback);
